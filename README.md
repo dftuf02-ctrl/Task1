@@ -4,6 +4,31 @@ A production-ready full-stack Task Management application featuring an Express.j
 
 ---
 
+## ✨ Features
+
+- **Task CRUD** — create, read, update, and delete tasks with `PENDING` / `IN_PROGRESS` / `COMPLETED` status, due dates, and Zod-validated payloads.
+- **Authentication & authorization** — email/password signup & login, JWT access tokens + rotating refresh tokens (stored hashed, revocable), and role-based access (`USER` vs `ADMIN`).
+- **Per-user task scoping** — a `USER` sees only their own tasks; an `ADMIN` sees everyone's.
+- **Deletion activity log** — every delete is recorded and viewable via `GET /api/v1/tasks/deleted` and the frontend **Deleted Log** panel.
+- **Async report generation** — heavy "report every task + email it" work runs off the request path on a Redis-backed **BullMQ** queue, processed by a **separate worker**, with retries, backoff, and idempotency.
+- **Rate limiting** — Redis-backed global and per-user/per-auth limits.
+- **Production hardening** — Helmet, HPP, CORS allow-list, request IDs, and structured Winston logging.
+- **Tested & containerized** — Jest/Supertest suite with coverage, multi-stage Dockerfiles, Docker Compose stack, and a GitHub Actions CI workflow.
+
+---
+
+## 🧰 Tech Stack
+
+| Layer        | Technologies |
+|--------------|--------------|
+| **Backend**  | Node.js, Express.js, Zod, JWT (`jsonwebtoken`), `bcryptjs`, BullMQ + `ioredis`, `nodemailer`, Helmet, HPP, Winston |
+| **Frontend** | React 18, Vite, native Fetch API |
+| **Database** | Supabase (PostgreSQL) |
+| **Infra**    | Redis, Docker / Docker Compose, Nginx (frontend serving), GitHub Actions (CI) |
+| **Testing**  | Jest, Supertest |
+
+---
+
 ## 🏗️ Architecture: MVC
 
 This project is built using a clean Model-View-Controller pattern:
@@ -259,7 +284,14 @@ curl -i http://localhost:3001/api/v1/tasks \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-#### 3. Create Task
+#### 3. Get Deletion Log
+`GET /api/v1/tasks/deleted` — returns the log of deleted tasks (scoped by role).
+```bash
+curl -i http://localhost:3001/api/v1/tasks/deleted \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+#### 4. Create Task
 `POST /api/v1/tasks`
 ```bash
 curl -i -X POST http://localhost:3001/api/v1/tasks \
@@ -268,14 +300,14 @@ curl -i -X POST http://localhost:3001/api/v1/tasks \
   -d '{"title": "Implement Docker Containerization", "description": "Configure multi-stage Dockerfiles and compose configuration", "status": "IN_PROGRESS"}'
 ```
 
-#### 4. Get Task By ID
+#### 5. Get Task By ID
 `GET /api/v1/tasks/{id}`
 ```bash
 curl -i http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-#### 5. Update Task
+#### 6. Update Task
 `PUT /api/v1/tasks/{id}`
 ```bash
 curl -i -X PUT http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 \
@@ -284,7 +316,7 @@ curl -i -X PUT http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655
   -d '{"status": "COMPLETED"}'
 ```
 
-#### 6. Delete Task
+#### 7. Delete Task
 `DELETE /api/v1/tasks/{id}`
 ```bash
 curl -i -X DELETE http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 \
@@ -344,3 +376,38 @@ curl -i http://localhost:3001/api/v1/reports/<jobId> \
 
 > The report is scoped like the task list — a `USER` sees only their own
 > tasks, an `ADMIN` sees everyone's. Polling another user's job returns 404.
+
+---
+
+## 📁 Project Structure
+
+```
+Task1/
+├── backend/
+│   ├── server.js                 # API entry point
+│   ├── worker.js                 # Background worker entry point (report jobs)
+│   └── src/
+│       ├── app.js                # Express app: security, middleware, routes
+│       ├── config/               # env, supabase, redis clients
+│       ├── controllers/          # auth, task, report, health
+│       ├── middleware/           # authenticate, authorize, rateLimiter, validate, errorHandler, ...
+│       ├── models/               # task & user models (Zod schemas + data access)
+│       ├── routes/               # auth, task, report, health routers
+│       ├── services/             # report.service, email.service
+│       ├── queue/                # BullMQ connection + report queue
+│       ├── workers/              # report.worker (job processor)
+│       └── utils/                # jwt, password, logger, responseHelper
+│   └── tests/                    # Jest unit + integration (Supertest) suites
+├── frontend/
+│   └── src/
+│       ├── pages/                # AuthPage, Dashboard
+│       ├── components/           # Header, TaskCard, TaskModal, StatusBadge, ConfirmDialog, DeletedLog
+│       ├── hooks/                # useAuth, useTasks
+│       ├── services/api.js       # backend API client
+│       └── styles/index.css
+├── supabase/
+│   ├── migrations/               # 001 tasks, 002 deleted_tasks, 003 auth
+│   └── seed.sql                  # dummy data
+├── docker-compose.yml            # redis + api + worker + frontend
+└── .github/workflows/ci.yml      # CI pipeline
+```
