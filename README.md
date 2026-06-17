@@ -30,13 +30,29 @@ SUPABASE_ANON_KEY=your-supabase-anon-key
 # CORS configuration
 CORS_ORIGIN=http://localhost:5173
 
+# JWT / Auth (REQUIRED in production — set strong random secrets)
+JWT_ACCESS_SECRET=your-access-secret
+JWT_REFRESH_SECRET=your-refresh-secret
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=7d
+REFRESH_EXPIRY_DAYS=7
+BCRYPT_ROUNDS=10
+
+# Redis (REQUIRED — backs rate limiting, no in-memory fallback)
+REDIS_URL=redis://localhost:6379
+
 # Security rate limits
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=100
+AUTH_RATE_LIMIT_MAX=10
 
 # Winston logs
 LOG_LEVEL=info
 ```
+
+> **Auth & roles:** Users sign up / log in for a JWT **access token** (short-lived) plus a **refresh token** (stored hashed in the DB, rotated on each refresh and revocable). Tasks are scoped by role — a `USER` sees only their own tasks, an `ADMIN` sees everyone's. Promote a user to admin by setting `role = 'ADMIN'` on their row in the `users` table.
+
+> **Redis is required.** Rate limiting is backed by Redis with no fallback, so a Redis instance must be running for the API to serve traffic (locally: `docker run -p 6379:6379 redis:7-alpine`, or use `docker-compose` which now includes a `redis` service).
 
 ---
 
@@ -79,6 +95,10 @@ CREATE TRIGGER set_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 ```
 
+Then run the remaining migrations **in order** in the same SQL Editor:
+- `supabase/migrations/002_create_deleted_tasks.sql` — deletion activity log
+- `supabase/migrations/003_create_auth.sql` — `users`, `refresh_tokens`, and task ownership (`tasks.user_id`)
+
 To populate your database with dummy data, execute the contents of `supabase/seed.sql`.
 
 ---
@@ -118,7 +138,16 @@ npm run dev
 ```
 The server will run on `http://localhost:3001`.
 
-#### 2. Start the Frontend:
+#### 2. Start the Background Worker (required for report jobs):
+```bash
+cd backend
+npm run worker        # or: npm run worker:dev (nodemon)
+```
+The worker is a **separate process** from the API. It consumes report jobs
+from the Redis queue, so it needs the same `REDIS_URL` and Supabase config.
+(Under Docker Compose this runs automatically as the `worker` service.)
+
+#### 3. Start the Frontend:
 ```bash
 cd frontend
 npm install
@@ -179,7 +208,43 @@ npm run test:e2e
 
 ---
 
+### Authentication
+
+All `/api/v1/tasks` endpoints require an `Authorization: Bearer <accessToken>` header. Obtain tokens via the auth endpoints below.
+
+#### Sign up
+`POST /api/v1/auth/signup`
+```bash
+curl -i -X POST http://localhost:3001/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password123"}'
+```
+
+#### Log in
+`POST /api/v1/auth/login`
+```bash
+curl -i -X POST http://localhost:3001/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password123"}'
+```
+Both return `{ user, accessToken, refreshToken }`.
+
+#### Refresh tokens
+`POST /api/v1/auth/refresh` — rotates the refresh token and returns a new pair.
+```bash
+curl -i -X POST http://localhost:3001/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "<your-refresh-token>"}'
+```
+
+#### Logout / Profile
+`POST /api/v1/auth/logout` (revokes a refresh token) · `GET /api/v1/auth/me` (current user; requires access token).
+
+---
+
 ### Endpoints & CURL Examples
+
+> Replace `$TOKEN` with an access token from login/signup.
 
 #### 1. Health Status
 `GET /health`
@@ -188,15 +253,17 @@ curl -i http://localhost:3001/health
 ```
 
 #### 2. Get All Tasks
-`GET /api/v1/tasks`
+`GET /api/v1/tasks` — returns the caller's tasks (all tasks for admins).
 ```bash
-curl -i http://localhost:3001/api/v1/tasks
+curl -i http://localhost:3001/api/v1/tasks \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 #### 3. Create Task
 `POST /api/v1/tasks`
 ```bash
 curl -i -X POST http://localhost:3001/api/v1/tasks \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title": "Implement Docker Containerization", "description": "Configure multi-stage Dockerfiles and compose configuration", "status": "IN_PROGRESS"}'
 ```
@@ -204,13 +271,15 @@ curl -i -X POST http://localhost:3001/api/v1/tasks \
 #### 4. Get Task By ID
 `GET /api/v1/tasks/{id}`
 ```bash
-curl -i http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000
+curl -i http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 #### 5. Update Task
 `PUT /api/v1/tasks/{id}`
 ```bash
 curl -i -X PUT http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"status": "COMPLETED"}'
 ```
@@ -218,5 +287,60 @@ curl -i -X PUT http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655
 #### 6. Delete Task
 `DELETE /api/v1/tasks/{id}`
 ```bash
-curl -i -X DELETE http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000
+curl -i -X DELETE http://localhost:3001/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+---
+
+## ⏳ Background Jobs — Report Generation & Email Notification
+
+Generating a report over every task (and emailing it) is **slow**, so it is
+pushed **off the API request path** onto a **Redis-backed queue (BullMQ)** and
+processed by a **separate worker process**. The API enqueues the job and
+returns immediately; the worker does the work in the background.
+
+```
+POST /api/v1/reports ──▶ enqueue on Redis queue ──▶ 202 { jobId }   (returns instantly)
+                                  │
+                          (separate worker process)
+                                  ▼
+                    aggregate tasks → send email → store result
+                                  │
+GET /api/v1/reports/:jobId ◀──────┘  poll: queued → active → completed/failed
+```
+
+**What it demonstrates**
+- **Off-the-API processing** — the heavy work runs in `backend/worker.js`, a
+  process independent of the API. The API never blocks on it.
+- **Immediate response** — enqueue returns `202 Accepted` with a `jobId`.
+- **Automatic retries** — failed jobs are retried (default 3 attempts) with
+  exponential backoff (~2s, 4s, 8s). Set `REPORT_FAIL_RATE=0.5` to watch
+  retries happen in the worker logs.
+- **Idempotency (runs twice safely)** — two ways:
+  1. *Submission* — send an `Idempotency-Key` header; repeating a request with
+     the same key returns the **same** job instead of queueing a duplicate.
+  2. *Processing* — the email step is guarded by an atomic Redis claim
+     (`SET NX`), so even if a job is processed more than once (retry /
+     at-least-once delivery) the notification is sent **at most once**.
+
+#### Request a report (enqueue)
+`POST /api/v1/reports`
+```bash
+curl -i -X POST http://localhost:3001/api/v1/reports \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: my-unique-key-123"
+# → 202 { "success": true, "data": { "jobId": "...", "status": "queued", "statusUrl": "/api/v1/reports/..." } }
+```
+
+#### Poll job status / fetch the report
+`GET /api/v1/reports/{jobId}`
+```bash
+curl -i http://localhost:3001/api/v1/reports/<jobId> \
+  -H "Authorization: Bearer $TOKEN"
+# while running:  { "status": "active", "progress": 70, "attemptsMade": 1 }
+# when done:      { "status": "completed", "report": { "totals": { ... }, "completionRate": 50 } }
+```
+
+> The report is scoped like the task list — a `USER` sees only their own
+> tasks, an `ADMIN` sees everyone's. Polling another user's job returns 404.

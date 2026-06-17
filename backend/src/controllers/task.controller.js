@@ -8,19 +8,25 @@ const logger = require('../utils/logger');
  */
 
 /**
+ * Whether the requesting user may access the given task.
+ * Admins may access any task; regular users only their own.
+ */
+const canAccess = (user, task) => user.role === 'ADMIN' || task.user_id === user.id;
+
+/**
  * POST /api/v1/tasks
  * Create a new task.
  */
 const createTask = async (req, res, next) => {
   try {
-    const { data, error } = await TaskModel.create(req.body);
+    const { data, error } = await TaskModel.create(req.body, req.user.id);
 
     if (error) {
       logger.error('Failed to create task', { requestId: req.requestId, error: error.message });
       return sendError(res, 'Failed to create task', [], 500);
     }
 
-    logger.info('Task created', { requestId: req.requestId, taskId: data.id });
+    logger.info('Task created', { requestId: req.requestId, taskId: data.id, userId: req.user.id });
     return sendSuccess(res, data, 201);
   } catch (err) {
     next(err);
@@ -33,7 +39,7 @@ const createTask = async (req, res, next) => {
  */
 const getAllTasks = async (req, res, next) => {
   try {
-    const { data, error } = await TaskModel.findAll();
+    const { data, error } = await TaskModel.findAll(req.user);
 
     if (error) {
       logger.error('Failed to fetch tasks', { requestId: req.requestId, error: error.message });
@@ -66,6 +72,11 @@ const getTaskById = async (req, res, next) => {
       return sendError(res, 'Task not found', [], 404);
     }
 
+    // Hide other users' tasks behind a 404 so existence isn't leaked.
+    if (!canAccess(req.user, data)) {
+      return sendError(res, 'Task not found', [], 404);
+    }
+
     return sendSuccess(res, data);
   } catch (err) {
     next(err);
@@ -89,6 +100,10 @@ const updateTask = async (req, res, next) => {
     // Check if task exists
     const { data: existing, error: findError } = await TaskModel.findById(id);
     if (findError || !existing) {
+      return sendError(res, 'Task not found', [], 404);
+    }
+
+    if (!canAccess(req.user, existing)) {
       return sendError(res, 'Task not found', [], 404);
     }
 
@@ -131,6 +146,10 @@ const deleteTask = async (req, res, next) => {
       return sendError(res, 'Task not found', [], 404);
     }
 
+    if (!canAccess(req.user, existing)) {
+      return sendError(res, 'Task not found', [], 404);
+    }
+
     const { error } = await TaskModel.remove(id);
 
     if (error) {
@@ -138,8 +157,38 @@ const deleteTask = async (req, res, next) => {
       return sendError(res, 'Failed to delete task', [], 500);
     }
 
+    // Record the deletion in the activity log (best-effort:
+    // a logging failure should not fail the delete itself).
+    const logResult = await TaskModel.logDeletion(existing);
+    if (logResult && logResult.error) {
+      logger.warn('Failed to record task deletion in log', {
+        requestId: req.requestId,
+        taskId: id,
+        error: logResult.error.message,
+      });
+    }
+
     logger.info('Task deleted', { requestId: req.requestId, taskId: id });
     return sendSuccess(res, { message: 'Task deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/v1/tasks/deleted
+ * Retrieve the task deletion log (most recently deleted first).
+ */
+const getDeletedTasks = async (req, res, next) => {
+  try {
+    const { data, error } = await TaskModel.findAllDeleted(req.user);
+
+    if (error) {
+      logger.error('Failed to fetch deletion log', { requestId: req.requestId, error: error.message });
+      return sendError(res, 'Failed to fetch deletion log', [], 500);
+    }
+
+    return sendSuccess(res, data);
   } catch (err) {
     next(err);
   }
@@ -151,4 +200,5 @@ module.exports = {
   getTaskById,
   updateTask,
   deleteTask,
+  getDeletedTasks,
 };

@@ -2,7 +2,7 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const hpp = require('hpp');
-const rateLimit = require('express-rate-limit');
+const { globalLimiter } = require('./middleware/rateLimiter');
 const { getConfig } = require('./config/env');
 const requestIdMiddleware = require('./middleware/requestId');
 const requestLoggerMiddleware = require('./middleware/requestLogger');
@@ -22,7 +22,7 @@ const createApp = () => {
   app.use(cors({
     origin: config.corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id', 'Idempotency-Key'],
     credentials: true,
     maxAge: 86400,
   }));
@@ -30,18 +30,10 @@ const createApp = () => {
   // Prevent HTTP Parameter Pollution
   app.use(hpp());
 
-  // Rate limiting
-  app.use(rateLimit({
-    windowMs: config.rateLimitWindowMs,
-    max: config.rateLimitMax,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-      success: false,
-      message: 'Too many requests, please try again later',
-      errors: [],
-    },
-  }));
+  // Rate limiting (Redis-backed). Global limiter keyed by client IP
+  // for baseline protection; task routes additionally enforce a
+  // per-user limit after authentication.
+  app.use(globalLimiter());
 
   // ── Body Parsing ──────────────────────────────────────────
   app.use(express.json({ limit: '10kb' }));

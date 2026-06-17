@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Header = ({ stats }) => {
+const Header = ({ stats, user, onLogout }) => {
   return (
     <header className="header">
       <div className="header-content">
@@ -32,6 +32,20 @@ const Header = ({ stats }) => {
             <div className="stat-label">Completed</div>
           </div>
         </div>
+
+        {user && (
+          <div className="header-user">
+            <div className="header-user-info">
+              <span className="header-user-email">{user.email}</span>
+              <span className={`role-badge ${user.role === 'ADMIN' ? 'admin' : 'user'}`}>
+                {user.role}
+              </span>
+            </div>
+            <button className="btn-logout" onClick={onLogout} id="logout-btn">
+              Logout
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

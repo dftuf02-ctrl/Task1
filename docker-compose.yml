@@ -1,4 +1,16 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: task-flow-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
   api:
     build:
       context: ./backend
@@ -12,15 +24,50 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - CORS_ORIGIN=http://localhost
+      - REDIS_URL=redis://redis:6379
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_ACCESS_EXPIRY=15m
+      - JWT_REFRESH_EXPIRY=7d
       - RATE_LIMIT_WINDOW_MS=900000
       - RATE_LIMIT_MAX=100
+      - AUTH_RATE_LIMIT_MAX=10
       - LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: task-flow-worker
+    command: ["node", "worker.js"]
+    environment:
+      - NODE_ENV=production
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - REDIS_URL=redis://redis:6379
+      # Required because getConfig() validates these in production, even
+      # though the worker itself never issues/verifies JWTs.
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - REPORT_WORKER_CONCURRENCY=2
+      - REPORT_PROCESSING_DELAY_MS=3000
+      - LOG_LEVEL=info
+      # Optional real SMTP delivery; defaults to dev JSON transport when unset.
+      - SMTP_URL=${SMTP_URL:-}
+      - EMAIL_FROM=${EMAIL_FROM:-TaskFlow <no-reply@taskflow.local>}
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:

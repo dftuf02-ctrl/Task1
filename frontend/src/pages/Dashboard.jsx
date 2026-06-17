@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import TaskCard from '../components/TaskCard';
 import TaskModal from '../components/TaskModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import DeletedLog from '../components/DeletedLog';
 
-const Dashboard = ({ tasks, loading, error, stats, onCreateTask, onUpdateTask, onDeleteTask }) => {
+const Dashboard = ({ tasks, deletedTasks, loading, error, stats, isAdmin, onCreateTask, onUpdateTask, onDeleteTask }) => {
   const [filter, setFilter] = useState('ALL');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [deleteStatus, setDeleteStatus] = useState(null);
 
   const handleNewClick = () => {
     setSelectedTask(null);
@@ -35,7 +37,14 @@ const Dashboard = ({ tasks, loading, error, stats, onCreateTask, onUpdateTask, o
 
   const handleConfirmDelete = async () => {
     if (selectedTask) {
-      await onDeleteTask(selectedTask.id);
+      const taskTitle = selectedTask.title;
+      try {
+        await onDeleteTask(selectedTask.id);
+        setDeleteStatus({ type: 'success', message: `"${taskTitle}" was deleted successfully.` });
+      } catch (err) {
+        setDeleteStatus({ type: 'error', message: `Failed to delete "${taskTitle}". Please try again.` });
+      }
+      setTimeout(() => setDeleteStatus(null), 3000);
     }
   };
 
@@ -59,6 +68,12 @@ const Dashboard = ({ tasks, loading, error, stats, onCreateTask, onUpdateTask, o
 
   return (
     <main className="main-content">
+      {isAdmin && (
+        <div className="admin-banner" id="admin-banner">
+          👑 Admin view — showing tasks from all users.
+        </div>
+      )}
+
       {error && (
         <div style={{
           background: 'var(--color-danger-bg)',
@@ -69,6 +84,19 @@ const Dashboard = ({ tasks, loading, error, stats, onCreateTask, onUpdateTask, o
           marginBottom: '1.5rem',
         }}>
           Error: {error}
+        </div>
+      )}
+
+      {deleteStatus && (
+        <div style={{
+          background: deleteStatus.type === 'success' ? 'var(--color-success-bg)' : 'var(--color-danger-bg)',
+          border: `1px solid ${deleteStatus.type === 'success' ? 'var(--color-success)' : 'var(--color-danger)'}`,
+          color: deleteStatus.type === 'success' ? 'var(--color-success)' : 'var(--color-danger)',
+          padding: '1rem',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: '1.5rem',
+        }}>
+          {deleteStatus.message}
         </div>
       )}
 
@@ -124,6 +152,8 @@ const Dashboard = ({ tasks, loading, error, stats, onCreateTask, onUpdateTask, o
           </button>
         </div>
       </div>
+
+      <DeletedLog deletedTasks={deletedTasks} />
 
       <div className="task-grid">
         {filteredTasks.length > 0 ? (

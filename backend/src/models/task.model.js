@@ -72,18 +72,26 @@ const uuidSchema = z.string().uuid({ message: 'Invalid UUID format' });
 // ============================================================
 
 const TABLE_NAME = 'tasks';
+const DELETED_TABLE_NAME = 'deleted_tasks';
 
 /**
- * Fetch all tasks, ordered by creation date descending.
+ * Fetch tasks ordered by creation date descending.
+ * Admins see every task; regular users see only their own.
+ * @param {{ id: string, role: string }} user
  * @returns {Promise<{ data: Array, error: object|null }>}
  */
-const findAll = async () => {
+const findAll = async (user) => {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from(TABLE_NAME)
     .select('*')
     .order('created_at', { ascending: false });
 
+  if (!user || user.role !== 'ADMIN') {
+    query = query.eq('user_id', user.id);
+  }
+
+  const { data, error } = await query;
   return { data, error };
 };
 
@@ -104,15 +112,16 @@ const findById = async (id) => {
 };
 
 /**
- * Create a new task.
+ * Create a new task owned by the given user.
  * @param {object} taskData
+ * @param {string} userId - owner of the task
  * @returns {Promise<{ data: object|null, error: object|null }>}
  */
-const create = async (taskData) => {
+const create = async (taskData, userId) => {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE_NAME)
-    .insert(taskData)
+    .insert({ ...taskData, user_id: userId })
     .select()
     .single();
 
@@ -154,6 +163,50 @@ const remove = async (id) => {
   return { data, error };
 };
 
+/**
+ * Record a deleted task into the deletion log.
+ * @param {object} task - the task that was deleted
+ * @returns {Promise<{ data: object|null, error: object|null }>}
+ */
+const logDeletion = async (task) => {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(DELETED_TABLE_NAME)
+    .insert({
+      task_id: task.id,
+      title: task.title,
+      description: task.description ?? null,
+      status: task.status,
+      due_date: task.due_date ?? null,
+      user_id: task.user_id ?? null,
+    })
+    .select()
+    .single();
+
+  return { data, error };
+};
+
+/**
+ * Fetch the deletion log, most recently deleted first.
+ * Admins see every entry; regular users see only their own.
+ * @param {{ id: string, role: string }} user
+ * @returns {Promise<{ data: Array, error: object|null }>}
+ */
+const findAllDeleted = async (user) => {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from(DELETED_TABLE_NAME)
+    .select('*')
+    .order('deleted_at', { ascending: false });
+
+  if (!user || user.role !== 'ADMIN') {
+    query = query.eq('user_id', user.id);
+  }
+
+  const { data, error } = await query;
+  return { data, error };
+};
+
 module.exports = {
   // Schemas
   createTaskSchema,
@@ -166,4 +219,6 @@ module.exports = {
   create,
   update,
   remove,
+  logDeletion,
+  findAllDeleted,
 };

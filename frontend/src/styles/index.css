@@ -821,3 +821,279 @@ a {
     min-width: auto;
   }
 }
+
+/* ============================================================
+   Recently Deleted Log
+   ============================================================ */
+.deleted-log {
+  margin-bottom: 1.5rem;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.deleted-log-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.deleted-log-header:hover {
+  background: var(--color-bg-card-hover);
+}
+
+.deleted-log-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.deleted-log-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: var(--radius-full);
+}
+
+.deleted-log-chevron {
+  color: var(--color-text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.deleted-log-chevron.open {
+  transform: rotate(180deg);
+}
+
+.deleted-log-body {
+  border-top: 1px solid var(--color-border);
+  padding: 0.5rem 1.25rem 1rem;
+}
+
+.deleted-log-empty {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  padding: 0.75rem 0;
+  text-align: center;
+}
+
+.deleted-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deleted-log-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.deleted-log-item:last-child {
+  border-bottom: none;
+}
+
+.deleted-log-item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.deleted-log-item-title {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deleted-log-item-time {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Auth (Login / Signup)
+   ============================================================ */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.auth-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-text-primary), var(--color-accent-hover));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.auth-subtitle {
+  text-align: center;
+  color: var(--color-text-secondary);
+  margin-bottom: 1.5rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.auth-form .form-label {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.auth-submit {
+  margin-top: 1rem;
+  width: 100%;
+  justify-content: center;
+}
+
+.auth-error {
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.auth-switch {
+  text-align: center;
+  margin-top: 1.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.auth-switch-btn {
+  background: none;
+  border: none;
+  color: var(--color-accent-hover);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+
+.auth-switch-btn:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================
+   Header user / role badge / logout
+   ============================================================ */
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.header-user-email {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.role-badge.admin {
+  color: var(--color-pending);
+  background: var(--color-pending-bg);
+  border: 1px solid var(--color-pending-border);
+}
+
+.role-badge.user {
+  color: var(--color-in-progress);
+  background: var(--color-in-progress-bg);
+  border: 1px solid var(--color-in-progress-border);
+}
+
+.btn-logout {
+  background: var(--color-bg-glass);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.btn-logout:hover {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.admin-banner {
+  background: var(--color-pending-bg);
+  border: 1px solid var(--color-pending-border);
+  color: var(--color-pending);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}

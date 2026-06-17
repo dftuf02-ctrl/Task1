@@ -28,6 +28,7 @@ RUN npm ci --only=production
 # Copy source code from builder stage
 COPY --from=builder /usr/src/app/src ./src
 COPY --from=builder /usr/src/app/server.js ./server.js
+COPY --from=builder /usr/src/app/worker.js ./worker.js
 
 # Use non-root user for security
 USER node

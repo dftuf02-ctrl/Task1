@@ -13,6 +13,9 @@ describe('Task Controller Unit Tests', () => {
       body: {},
       params: {},
       requestId: 'test-request-id',
+      // Default to an admin so ownership checks pass; individual
+      // tests override this to exercise per-user scoping.
+      user: { id: 'owner-1', role: 'ADMIN' },
     };
     mockRes = {
       status: jest.fn().mockReturnThis(),
@@ -33,7 +36,7 @@ describe('Task Controller Unit Tests', () => {
 
       await taskController.createTask(mockReq, mockRes, mockNext);
 
-      expect(TaskModel.create).toHaveBeenCalledWith(taskData);
+      expect(TaskModel.create).toHaveBeenCalledWith(taskData, 'owner-1');
       expect(mockRes.status).toHaveBeenCalledWith(201);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
@@ -195,14 +198,115 @@ describe('Task Controller Unit Tests', () => {
       TaskModel.uuidSchema.safeParse.mockReturnValue({ success: true, data: validUuid });
       TaskModel.findById.mockResolvedValue({ data: { id: validUuid }, error: null });
       TaskModel.remove.mockResolvedValue({ error: null });
+      TaskModel.logDeletion.mockResolvedValue({ data: { id: 'log-1' }, error: null });
 
       await taskController.deleteTask(mockReq, mockRes, mockNext);
 
       expect(TaskModel.remove).toHaveBeenCalledWith(validUuid);
+      expect(TaskModel.logDeletion).toHaveBeenCalled();
       expect(mockRes.status).toHaveBeenCalledWith(200);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: { message: 'Task deleted successfully' },
+      });
+    });
+
+    it('should still return 200 if recording the deletion log fails', async () => {
+      mockReq.params.id = validUuid;
+
+      TaskModel.uuidSchema.safeParse.mockReturnValue({ success: true, data: validUuid });
+      TaskModel.findById.mockResolvedValue({ data: { id: validUuid }, error: null });
+      TaskModel.remove.mockResolvedValue({ error: null });
+      TaskModel.logDeletion.mockResolvedValue({ data: null, error: { message: 'log insert failed' } });
+
+      await taskController.deleteTask(mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: { message: 'Task deleted successfully' },
+      });
+    });
+  });
+
+  describe('role-based ownership', () => {
+    const validUuid = 'c8b9dbe0-6f7f-4f01-a1e4-399bf07fa3c5';
+
+    it('getTaskById returns 404 when a regular user requests another user\'s task', async () => {
+      mockReq.user = { id: 'user-A', role: 'USER' };
+      mockReq.params.id = validUuid;
+
+      TaskModel.uuidSchema.safeParse.mockReturnValue({ success: true, data: validUuid });
+      TaskModel.findById.mockResolvedValue({ data: { id: validUuid, user_id: 'user-B' }, error: null });
+
+      await taskController.getTaskById(mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+    });
+
+    it('getTaskById succeeds when a regular user requests their own task', async () => {
+      mockReq.user = { id: 'user-A', role: 'USER' };
+      mockReq.params.id = validUuid;
+      const task = { id: validUuid, user_id: 'user-A', title: 'Mine' };
+
+      TaskModel.uuidSchema.safeParse.mockReturnValue({ success: true, data: validUuid });
+      TaskModel.findById.mockResolvedValue({ data: task, error: null });
+
+      await taskController.getTaskById(mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith({ success: true, data: task });
+    });
+
+    it('deleteTask returns 404 when a regular user deletes another user\'s task', async () => {
+      mockReq.user = { id: 'user-A', role: 'USER' };
+      mockReq.params.id = validUuid;
+
+      TaskModel.uuidSchema.safeParse.mockReturnValue({ success: true, data: validUuid });
+      TaskModel.findById.mockResolvedValue({ data: { id: validUuid, user_id: 'user-B' }, error: null });
+
+      await taskController.deleteTask(mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(TaskModel.remove).not.toHaveBeenCalled();
+    });
+
+    it('getAllTasks passes the requesting user to the model for scoping', async () => {
+      mockReq.user = { id: 'user-A', role: 'USER' };
+      TaskModel.findAll.mockResolvedValue({ data: [], error: null });
+
+      await taskController.getAllTasks(mockReq, mockRes, mockNext);
+
+      expect(TaskModel.findAll).toHaveBeenCalledWith({ id: 'user-A', role: 'USER' });
+    });
+  });
+
+  describe('getDeletedTasks', () => {
+    it('should return the deletion log with status 200', async () => {
+      const log = [
+        { id: 'l1', task_id: 't1', title: 'Gone task', status: 'PENDING', deleted_at: 'now' },
+      ];
+      TaskModel.findAllDeleted.mockResolvedValue({ data: log, error: null });
+
+      await taskController.getDeletedTasks(mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: log,
+      });
+    });
+
+    it('should return 500 when the model returns a database error', async () => {
+      TaskModel.findAllDeleted.mockResolvedValue({ data: null, error: { message: 'DB error' } });
+
+      await taskController.getDeletedTasks(mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'Failed to fetch deletion log',
+        errors: [],
       });
     });
   });

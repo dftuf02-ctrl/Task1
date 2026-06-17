@@ -6,6 +6,7 @@ import api from '../services/api';
  */
 const useTasks = () => {
   const [tasks, setTasks] = useState([]);
+  const [deletedTasks, setDeletedTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -19,6 +20,17 @@ const useTasks = () => {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchDeletedTasks = useCallback(async () => {
+    try {
+      const data = await api.getDeletedTasks();
+      setDeletedTasks(data);
+    } catch (err) {
+      // Non-critical: the deletion log is supplementary, so don't
+      // surface this as a blocking error for the whole dashboard.
+      console.error('Failed to load deletion log:', err.message);
     }
   }, []);
 
@@ -37,11 +49,14 @@ const useTasks = () => {
   const deleteTask = useCallback(async (id) => {
     await api.deleteTask(id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+    // Refresh the deletion log so the home page reflects the new entry.
+    fetchDeletedTasks();
+  }, [fetchDeletedTasks]);
 
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks]);
+    fetchDeletedTasks();
+  }, [fetchTasks, fetchDeletedTasks]);
 
   // Derived stats
   const stats = {
@@ -53,10 +68,12 @@ const useTasks = () => {
 
   return {
     tasks,
+    deletedTasks,
     loading,
     error,
     stats,
     fetchTasks,
+    fetchDeletedTasks,
     createTask,
     updateTask,
     deleteTask,

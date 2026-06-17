@@ -6,6 +6,10 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.js',
     '!src/config/**',
+    // Queue/worker infra requires a live Redis and is exercised by the
+    // running stack rather than unit tests.
+    '!src/queue/**',
+    '!src/workers/**',
     '!**/node_modules/**',
   ],
   coverageThreshold: {
