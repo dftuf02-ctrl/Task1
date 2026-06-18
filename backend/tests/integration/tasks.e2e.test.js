@@ -7,6 +7,11 @@ const { signAccessToken } = require('../../src/utils/jwt');
 // Mock task model database queries
 jest.mock('../../src/models/task.model');
 jest.mock('../../src/config/supabase');
+// Mock the Redis Streams publisher so creating a task doesn't open a real
+// Redis connection (which would leak as an open handle and keep Jest alive).
+jest.mock('../../src/events/eventStream', () => ({
+  publishEvent: jest.fn().mockResolvedValue('0-1'),
+}));
 
 describe('Task Management API E2E/Integration Tests', () => {
   let app;
