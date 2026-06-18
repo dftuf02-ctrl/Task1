@@ -20,22 +20,56 @@ export const tokenStore = {
 // Single-flight refresh: concurrent 401s share one refresh request.
 let refreshPromise = null;
 
+// The app (useAuth) registers a handler so that when the session genuinely
+// ends, the UI can react (log the user out) instead of leaving them on a
+// broken, falsely "logged-in" screen.
+let onSessionExpired = null;
+export const setOnSessionExpired = (fn) => {
+  onSessionExpired = fn;
+};
+
+const endSession = (reason) => {
+  tokenStore.clear();
+  if (onSessionExpired) onSessionExpired(reason);
+};
+
 const doRefresh = async () => {
   const refreshToken = tokenStore.getRefresh();
   if (!refreshToken) throw new Error('No refresh token');
 
-  const response = await fetch(`${API_BASE}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  });
-  const json = await response.json();
+  let response;
+  try {
+    response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    // Network blip — the refresh token may still be perfectly valid. Do NOT
+    // clear tokens or end the session; surface a transient error so the
+    // original request can fail softly and be retried later.
+    const err = new Error('Network error during token refresh');
+    err.isTransient = true;
+    throw err;
+  }
 
-  if (!response.ok || !json.success) {
-    tokenStore.clear();
+  const json = await response.json().catch(() => ({}));
+
+  if (response.status === 401 || response.status === 403) {
+    // Genuine auth failure: the refresh token is invalid/expired → end session.
+    endSession(json.message || 'Session expired');
     const error = new Error(json.message || 'Session expired');
     error.status = response.status;
+    error.sessionEnded = true;
     throw error;
+  }
+
+  if (!response.ok || !json.success) {
+    // Server-side (5xx) failure — transient, not an auth decision. Keep tokens.
+    const err = new Error(json.message || 'Token refresh failed');
+    err.status = response.status;
+    err.isTransient = true;
+    throw err;
   }
 
   tokenStore.set({ accessToken: json.data.accessToken, refreshToken: json.data.refreshToken });
@@ -77,8 +111,11 @@ const request = async (endpoint, options = {}, { auth = true, _retry = false } =
     try {
       await refreshAccessToken();
       return request(endpoint, options, { auth, _retry: true });
-    } catch {
-      // fall through to throw the original 401 below
+    } catch (refreshErr) {
+      // A genuine session end already cleared tokens + notified the app.
+      // A transient (network/5xx) failure must NOT log the user out — fall
+      // through and surface the original error so they can retry.
+      if (refreshErr.sessionEnded) throw refreshErr;
     }
   }
 

@@ -1,5 +1,5 @@
 const UserModel = require('../models/user.model');
-const { hashPassword, verifyPassword } = require('../utils/password');
+const { hashPassword, verifyPassword, fakeVerify } = require('../utils/password');
 const {
   signAccessToken,
   signRefreshToken,
@@ -9,6 +9,7 @@ const {
 const { getConfig } = require('../config/env');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
 const logger = require('../utils/logger');
+const { audit, fromRequest } = require('../utils/audit');
 
 /**
  * Issues a fresh access + refresh token pair and persists the
@@ -80,18 +81,29 @@ const login = async (req, res, next) => {
       return sendError(res, 'Failed to log in', [], 500);
     }
 
-    // Use a generic message to avoid leaking which emails exist.
+    // Use a generic message to avoid leaking which emails exist — AND run a
+    // dummy bcrypt comparison so the no-such-user path costs the same time as
+    // a real one (no timing oracle for account enumeration).
     if (!user) {
+      await fakeVerify();
+      audit({ action: 'auth.login', result: 'FAILURE', context: fromRequest(req), metadata: { email } });
       return sendError(res, 'Invalid email or password', [], 401);
     }
 
     const ok = await verifyPassword(password, user.password_hash);
     if (!ok) {
+      audit({ action: 'auth.login', result: 'FAILURE', context: fromRequest(req), metadata: { email } });
       return sendError(res, 'Invalid email or password', [], 401);
     }
 
     const tokens = await issueTokens(user);
     logger.info('User logged in', { requestId: req.requestId, userId: user.id });
+    audit({
+      action: 'auth.login',
+      result: 'SUCCESS',
+      actor: { id: user.id, role: user.role },
+      context: fromRequest(req),
+    });
     return sendSuccess(res, { user: publicUser(user), ...tokens });
   } catch (err) {
     next(err);
@@ -143,6 +155,7 @@ const refresh = async (req, res, next) => {
 
 /**
  * POST /api/v1/auth/logout
+ *
  * Revokes the supplied refresh token (best-effort).
  */
 const logout = async (req, res, next) => {

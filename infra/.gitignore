@@ -1,0 +1,14 @@
+# Secrets — never commit real values
+terraform.tfvars
+*.auto.tfvars
+
+# Terraform state (may contain secret values) and local cache
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Allow the placeholder example through
+!terraform.tfvars.example

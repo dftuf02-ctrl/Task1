@@ -10,7 +10,10 @@ let supabaseClient = null;
 const getSupabaseClient = () => {
   if (!supabaseClient) {
     const config = getConfig();
-    supabaseClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    // Server-side client uses the SERVICE-ROLE key (config.supabaseKey),
+    // which operates behind RLS. Anon access is locked down by the
+    // restrictive RLS policies in migration 004.
+    supabaseClient = createClient(config.supabaseUrl, config.supabaseKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,

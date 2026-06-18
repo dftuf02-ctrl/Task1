@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { startReportWorker } = require('./src/workers/report.worker');
+const { startMetricsServer } = require('./src/workers/metricsServer');
 const { closeReportQueue } = require('./src/queue/reportQueue');
 const { closeRedis } = require('./src/config/redis');
 const logger = require('./src/utils/logger');
@@ -7,12 +8,16 @@ const logger = require('./src/utils/logger');
 // Separate process from the API: it only consumes jobs from the queue.
 const worker = startReportWorker();
 
+// Expose the worker's own /metrics endpoint for Prometheus to scrape.
+const metricsServer = startMetricsServer();
+
 // ── Graceful Shutdown ─────────────────────────────────────────
 const shutdown = async (signal) => {
   logger.info(`${signal} received. Shutting down worker...`);
   try {
     // Stop picking up new jobs and let in-flight ones finish.
     await worker.close();
+    metricsServer.close();
     await closeReportQueue();
     await closeRedis();
     logger.info('Worker closed. Process exiting.');

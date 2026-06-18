@@ -1,0 +1,25 @@
+# Least privilege: each service runs under its OWN ServiceAccount with NO
+# API permissions (no Role/RoleBinding granted). The pods never call the
+# Kubernetes API, so they get zero cluster rights — distinct identities for
+# audit, and nothing to escalate. automountServiceAccountToken is disabled
+# so the SA token isn't even mounted into the pods.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tasks-service
+  namespace: taskflow-cap
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: reports-service
+  namespace: taskflow-cap
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redis
+  namespace: taskflow-cap
+automountServiceAccountToken: false

@@ -14,9 +14,17 @@ let transporter = null;
 const getTransporter = () => {
   if (!transporter) {
     const config = getConfig();
-    transporter = config.smtpUrl
-      ? nodemailer.createTransport(config.smtpUrl)
-      : nodemailer.createTransport({ jsonTransport: true });
+    if (config.smtpUrl) {
+      transporter = nodemailer.createTransport(config.smtpUrl);
+    } else if (config.isProduction) {
+      // The JSON transport reports success but delivers nothing. Silently
+      // "succeeding" in production would mean notifications are never sent
+      // and nobody notices — fail loudly instead.
+      throw new Error('SMTP_URL is required in production: refusing to use the no-op JSON mail transport');
+    } else {
+      // Dev/CI: log-only transport so the feature works without credentials.
+      transporter = nodemailer.createTransport({ jsonTransport: true });
+    }
   }
   return transporter;
 };

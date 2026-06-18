@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: taskflow-cap
+  labels:
+    app.kubernetes.io/part-of: taskflow-capstone
+    # Enforce the restricted Pod Security Standard namespace-wide: no
+    # privileged pods, must run as non-root, drop capabilities, etc.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

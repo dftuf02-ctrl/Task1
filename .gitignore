@@ -11,6 +11,11 @@ build/
 out/
 .cache/
 
+# Test coverage (build output — must never be committed)
+coverage/
+**/coverage/
+*.lcov
+
 # Environment variables / Local configuration
 .env
 .env.local
@@ -21,6 +26,49 @@ backend/.env
 frontend/.env
 *.env
 !.env.example
+!*.env.example
+
+# Secrets / credentials — NEVER commit
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+id_rsa
+id_rsa.*
+*.keystore
+*credentials*.json
+service-account*.json
+secrets.json
+secrets.*.json
+
+# Terraform — state & tfvars hold PLAINTEXT secrets (apply this everywhere)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+.terraform.tfstate.lock.info
+
+# Security scan / SBOM outputs (can leak internal detail)
+sbom*.json
+trivy-results*.json
+*.sarif
+
+# Stray downloaded CLIs / binaries — must never be committed (size + supply chain)
+minikube-*
+kubectl-*
+*-linux-amd64
+*-darwin-amd64
+*-windows-amd64
+*.tar.gz
+*.zip
 
 # Debug/Log files
 npm-debug.log*

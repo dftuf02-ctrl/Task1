@@ -6,10 +6,11 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.js',
     '!src/config/**',
-    // Queue/worker infra requires a live Redis and is exercised by the
-    // running stack rather than unit tests.
+    // Queue/worker/event infra requires a live Redis and is exercised by the
+    // integration suite (real Redis) rather than unit tests.
     '!src/queue/**',
     '!src/workers/**',
+    '!src/events/**',
     '!**/node_modules/**',
   ],
   coverageThreshold: {
@@ -20,6 +21,6 @@ module.exports = {
       statements: 60,
     },
   },
-  setupFiles: ['dotenv/config'],
+  setupFiles: ['dotenv/config', '<rootDir>/tests/setup.env.js'],
   verbose: true,
 };

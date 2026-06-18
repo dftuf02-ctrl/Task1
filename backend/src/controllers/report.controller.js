@@ -27,8 +27,11 @@ const requestReport = async (req, res, next) => {
       requestId: req.requestId,
     };
 
+    // Scope the idempotency key to the user — otherwise two different users
+    // sending the same key would collide onto one job (and could read each
+    // other's report).
     const job = await enqueueReportJob(payload, {
-      jobId: idempotencyKey ? `report:${idempotencyKey}` : undefined,
+      jobId: idempotencyKey ? `report:${req.user.id}:${idempotencyKey}` : undefined,
     });
 
     logger.info('Report job enqueued', {
@@ -83,7 +86,14 @@ const getReportStatus = async (req, res, next) => {
     if (state === 'completed') {
       response.report = job.returnvalue;
     } else if (state === 'failed') {
-      response.error = job.failedReason;
+      // Never leak the raw internal failure to the client — log it server-side
+      // (correlated by job id) and return a generic message.
+      logger.error('Report job failed', {
+        requestId: req.requestId,
+        jobId: job.id,
+        failedReason: job.failedReason,
+      });
+      response.error = 'Report generation failed. Please try again later.';
     }
 
     return sendSuccess(res, response);

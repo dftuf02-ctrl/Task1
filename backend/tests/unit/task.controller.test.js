@@ -2,6 +2,11 @@ const taskController = require('../../src/controllers/task.controller');
 const TaskModel = require('../../src/models/task.model');
 
 jest.mock('../../src/models/task.model');
+// The controller publishes domain events to Redis Streams; mock it so unit
+// tests don't touch a real Redis.
+jest.mock('../../src/events/eventStream', () => ({
+  publishEvent: jest.fn().mockResolvedValue('0-1'),
+}));
 
 describe('Task Controller Unit Tests', () => {
   let mockReq;
@@ -198,12 +203,10 @@ describe('Task Controller Unit Tests', () => {
       TaskModel.uuidSchema.safeParse.mockReturnValue({ success: true, data: validUuid });
       TaskModel.findById.mockResolvedValue({ data: { id: validUuid }, error: null });
       TaskModel.remove.mockResolvedValue({ error: null });
-      TaskModel.logDeletion.mockResolvedValue({ data: { id: 'log-1' }, error: null });
 
       await taskController.deleteTask(mockReq, mockRes, mockNext);
 
       expect(TaskModel.remove).toHaveBeenCalledWith(validUuid);
-      expect(TaskModel.logDeletion).toHaveBeenCalled();
       expect(mockRes.status).toHaveBeenCalledWith(200);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
@@ -211,21 +214,19 @@ describe('Task Controller Unit Tests', () => {
       });
     });
 
-    it('should still return 200 if recording the deletion log fails', async () => {
+    it('does NOT app-side log the deletion — logging is atomic in the DB trigger', async () => {
       mockReq.params.id = validUuid;
 
       TaskModel.uuidSchema.safeParse.mockReturnValue({ success: true, data: validUuid });
       TaskModel.findById.mockResolvedValue({ data: { id: validUuid }, error: null });
       TaskModel.remove.mockResolvedValue({ error: null });
-      TaskModel.logDeletion.mockResolvedValue({ data: null, error: { message: 'log insert failed' } });
 
       await taskController.deleteTask(mockReq, mockRes, mockNext);
 
+      // The BEFORE DELETE trigger (migration 004) writes deleted_tasks in the
+      // same transaction, so the controller must not do best-effort logging.
+      expect(TaskModel.logDeletion).not.toHaveBeenCalled();
       expect(mockRes.status).toHaveBeenCalledWith(200);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        data: { message: 'Task deleted successfully' },
-      });
     });
   });
 

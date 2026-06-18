@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow-worker
+  namespace: taskflow
+  labels:
+    app: taskflow-worker
+    app.kubernetes.io/part-of: taskflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: taskflow-worker
+  template:
+    metadata:
+      labels:
+        app: taskflow-worker
+    spec:
+      containers:
+        - name: worker
+          image: taskflow-api:k8s
+          imagePullPolicy: IfNotPresent
+          command: ["node", "worker.js"]
+          ports:
+            - containerPort: 9101
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          envFrom:
+            - configMapRef:
+                name: taskflow-config
+            - secretRef:
+                name: taskflow-secrets
+          # The worker serves its Prometheus /metrics on 9101 — TCP-check it.
+          livenessProbe:
+            tcpSocket:
+              port: 9101
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "96Mi"
+            limits:
+              cpu: "250m"
+              memory: "192Mi"

@@ -17,6 +17,44 @@ A production-ready full-stack Task Management application featuring an Express.j
 
 ---
 
+## 🚀 Production Engineering & Hardening
+
+Beyond the core app, this repo was taken through a full production-readiness
+build-out. Each area has its own detailed doc.
+
+### 1. Observability — see [`OBSERVABILITY.md`](./OBSERVABILITY.md)
+- **Prometheus metrics** (RED: rate, errors, duration) on the API and worker, exposed at `/metrics`.
+- **Grafana dashboard** (auto-provisioned) with request rate, error rate, p50/p95/p99 latency, and Node event-loop lag.
+- **Structured logging with a request ID** that flows through *every* log line (API + worker) via `AsyncLocalStorage`.
+- **k6 load tests** (`loadtest/`) that found a bottleneck — `bcryptjs` blocking the event loop — fixed by switching to native `bcrypt`. Before/after: **~13 → ~51 req/s, p95 3.4s → 0.7s, event-loop lag 2.42s → 0.017s.**
+
+### 2. Infrastructure as Code — see [`infra/`](./infra)
+- **Terraform** provisions networking (VPC/subnets/SGs), **Secrets Manager**, S3, and the app containers — runnable against **LocalStack** (no cloud account).
+- `terraform destroy` then `terraform apply` rebuilds everything from scratch; secrets are generated/stored, never hardcoded.
+
+### 3. Kubernetes (minikube) — see [`k8s/README.md`](./k8s/README.md)
+- **Deployment / Service / ConfigMap / Secret**, readiness (`/health`) + liveness (TCP) probes.
+- **Zero-downtime rolling update** (verified 600/600 requests during rollout, `preStop` drain).
+- **Scaled to 3 replicas** with proven load-balancing across pods.
+
+### 4. Capstone — multi-service system — see [`capstone/README.md`](./capstone/README.md)
+- **2 services** (`tasks-service`, `reports-service`) behind an **NGINX Ingress** gateway.
+- **Async messaging** between them via **Redis Streams** (publish/consume).
+- **Full CI/CD** (`.github/workflows/`): test → secret scan (Gitleaks) → build → **Trivy image/fs scan (fails on HIGH/CRITICAL)** → SBOM → deploy.
+- **Deployed via Terraform to Kubernetes**, with monitoring and a defence-grade **security pass**: PSS `restricted`, default-deny **NetworkPolicies**, least-privilege **ServiceAccounts**, non-root/read-only/drop-caps containers, and an **append-only audit log** of every authn/authz/data-mutation/event.
+
+### 5. Security hardening (defence-grade)
+All 18 review findings plus an attack-surface audit were resolved (see [`SECURITY-FIXES.md`](./SECURITY-FIXES.md)). Highlights:
+- **Locked down RLS** and switched the backend to the **service-role key** — the anon/publishable key can no longer read or write the database (previously it exposed password hashes and refresh tokens). *Verified live: anon key now returns HTTP 401.*
+- Pinned JWT algorithm (`HS256`); JWT secrets **required in every environment**.
+- `trust proxy` set so rate limiting works behind an ingress.
+- **Constant-time login** (no account-enumeration timing oracle).
+- **Atomic deletion logging** via a DB trigger; `deleted_tasks → users` foreign key.
+- Per-user report idempotency keys; sanitized job errors; SMTP **fails loudly** in production.
+- Comprehensive `.gitignore` for secrets, Terraform state/vars, and keys; `coverage/` un-tracked.
+
+---
+
 ## 🧰 Tech Stack
 
 | Layer        | Technologies |
@@ -123,6 +161,13 @@ CREATE TRIGGER set_updated_at
 Then run the remaining migrations **in order** in the same SQL Editor:
 - `supabase/migrations/002_create_deleted_tasks.sql` — deletion activity log
 - `supabase/migrations/003_create_auth.sql` — `users`, `refresh_tokens`, and task ownership (`tasks.user_id`)
+- `supabase/migrations/004_security_hardening.sql` — **required**: atomic deletion logging (trigger), `deleted_tasks → users` FK, and **locks down RLS** so the anon key grants no access
+
+> **Use the service-role key, not the anon key.** The backend must be run with
+> `SUPABASE_SERVICE_ROLE_KEY` (server-side only). After migration 004 the anon
+> key can read/write nothing, so password hashes and refresh tokens are no
+> longer reachable via the public REST API. `SUPABASE_SERVICE_ROLE_KEY` is
+> **required in production** (the app refuses to start on the anon key).
 
 To populate your database with dummy data, execute the contents of `supabase/seed.sql`.
 

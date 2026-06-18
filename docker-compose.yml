@@ -22,6 +22,7 @@ services:
       - PORT=3001
       - NODE_ENV=production
       - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - CORS_ORIGIN=http://localhost
       - REDIS_URL=redis://redis:6379
@@ -33,6 +34,9 @@ services:
       - RATE_LIMIT_MAX=100
       - AUTH_RATE_LIMIT_MAX=10
       - LOG_LEVEL=info
+      # Password hashing impl: bcryptjs (baseline) | native (fix).
+      # Override at run time to produce before/after load-test numbers.
+      - PASSWORD_HASH=${PASSWORD_HASH:-bcryptjs}
     depends_on:
       redis:
         condition: service_healthy
@@ -53,6 +57,7 @@ services:
     environment:
       - NODE_ENV=production
       - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - REDIS_URL=redis://redis:6379
       # Required because getConfig() validates these in production, even
@@ -61,6 +66,7 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - REPORT_WORKER_CONCURRENCY=2
       - REPORT_PROCESSING_DELAY_MS=3000
+      - WORKER_METRICS_PORT=9101
       - LOG_LEVEL=info
       # Optional real SMTP delivery; defaults to dev JSON transport when unset.
       - SMTP_URL=${SMTP_URL:-}
@@ -86,4 +92,33 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    restart: unless-stopped
+
+  # ── Observability ──────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: task-flow-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+      - worker
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: task-flow-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
     restart: unless-stopped

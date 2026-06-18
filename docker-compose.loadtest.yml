@@ -1,0 +1,20 @@
+# Load-test overrides. Layer on top of docker-compose.yml so the rate
+# limiter doesn't short-circuit the test with 429s, and so the password
+# hashing implementation can be flipped for before/after runs.
+#
+#   Baseline (bcryptjs):
+#     PASSWORD_HASH=bcryptjs docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d --build
+#
+#   Fix (native bcrypt):
+#     PASSWORD_HASH=native   docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d --build
+#
+# Then drive load from the host:  k6 run loadtest/auth.js
+services:
+  api:
+    environment:
+      # Effectively disable rate limiting for the duration of the test so we
+      # measure the real bottleneck, not the limiter. Keep identical across
+      # baseline and fix runs.
+      - RATE_LIMIT_MAX=10000000
+      - AUTH_RATE_LIMIT_MAX=10000000
+      - PASSWORD_HASH=${PASSWORD_HASH:-bcryptjs}
