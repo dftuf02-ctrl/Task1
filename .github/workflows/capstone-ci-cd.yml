@@ -50,7 +50,7 @@ jobs:
       - name: Build image
         run: docker build -t $IMAGE ./backend
       - name: Trivy filesystem scan (deps)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: backend
@@ -58,7 +58,7 @@ jobs:
           exit-code: "1"            # GATE: fail the build
           ignore-unfixed: true
       - name: Trivy image scan (OS + app layers)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE }}
@@ -66,7 +66,7 @@ jobs:
           exit-code: "1"            # GATE: vulnerable image never ships
           ignore-unfixed: true
       - name: Generate SBOM (audit artifact)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE }}
