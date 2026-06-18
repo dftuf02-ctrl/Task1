@@ -1,0 +1,88 @@
+# Least-privilege networking: default-deny everything, then allow only the
+# exact flows the system needs. (Enforcement requires a NetworkPolicy-aware
+# CNI — start minikube with `--cni=calico`; the default CNI accepts these
+# objects but won't enforce them.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: taskflow-cap
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+# Allow the NGINX ingress controller to reach the two services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-services
+  namespace: taskflow-cap
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: ["tasks-service", "reports-service"] }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3001
+---
+# Allow the services to reach Redis (and only the services).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-services-to-redis
+  namespace: taskflow-cap
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app, operator: In, values: ["tasks-service", "reports-service"] }
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+# Egress the services need: DNS, Redis, and HTTPS to external Supabase.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-services-egress
+  namespace: taskflow-cap
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: ["tasks-service", "reports-service"] }
+  policyTypes: ["Egress"]
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # External HTTPS (Supabase)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

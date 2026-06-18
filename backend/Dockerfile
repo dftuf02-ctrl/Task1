@@ -22,8 +22,13 @@ ENV NODE_ENV=production
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm ci --only=production
+# Install production dependencies only. Native bcrypt (optional dep, used
+# by PASSWORD_HASH=native) needs a toolchain to compile on Alpine/musl, so
+# we add build deps just for the install and then remove them to keep the
+# runtime image small.
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && npm ci --omit=dev \
+ && apk del .build-deps
 
 # Copy source code from builder stage
 COPY --from=builder /usr/src/app/src ./src

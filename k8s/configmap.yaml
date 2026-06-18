@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: taskflow-config
+  namespace: taskflow
+  labels:
+    app.kubernetes.io/part-of: taskflow
+data:
+  # Non-secret runtime config (secrets live in the Secret, not here).
+  PORT: "3001"
+  NODE_ENV: "production"
+  CORS_ORIGIN: "http://localhost"
+  REDIS_URL: "redis://redis:6379"
+  RATE_LIMIT_WINDOW_MS: "900000"
+  RATE_LIMIT_MAX: "100"
+  AUTH_RATE_LIMIT_MAX: "10"
+  LOG_LEVEL: "info"
+  REPORT_WORKER_CONCURRENCY: "2"
+  REPORT_PROCESSING_DELAY_MS: "3000"
+  WORKER_METRICS_PORT: "9101"
+  # Bumping APP_VERSION changes the pod template → triggers a rolling update.
+  APP_VERSION: "v1"

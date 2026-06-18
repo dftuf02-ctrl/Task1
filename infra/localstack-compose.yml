@@ -1,0 +1,19 @@
+# LocalStack — the "AWS account" Terraform provisions against.
+# Start this BEFORE `terraform apply` (the AWS provider needs :4566 up).
+#
+#   docker compose -f localstack-compose.yml up -d
+#
+# Free-tier services only; no Pro auth token required.
+services:
+  localstack:
+    # Pinned to a community release that boots WITHOUT a LocalStack auth
+    # token (newer `latest` images require a free account). 3.8.1 needs no
+    # credentials — true "no cloud account" usage.
+    image: localstack/localstack:3.8.1
+    container_name: taskflow-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,secretsmanager,ec2,iam,sts,sqs
+      - DEBUG=0
+    restart: unless-stopped

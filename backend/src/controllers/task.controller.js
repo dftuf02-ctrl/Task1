@@ -1,6 +1,8 @@
 const TaskModel = require('../models/task.model');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
 const logger = require('../utils/logger');
+const { audit, fromRequest } = require('../utils/audit');
+const { publishEvent } = require('../events/eventStream');
 
 /**
  * Task Controller — handles HTTP request/response logic.
@@ -27,6 +29,17 @@ const createTask = async (req, res, next) => {
     }
 
     logger.info('Task created', { requestId: req.requestId, taskId: data.id, userId: req.user.id });
+    audit({
+      action: 'task.create',
+      result: 'SUCCESS',
+      actor: { id: req.user.id, role: req.user.role },
+      resource: { type: 'task', id: data.id },
+      context: fromRequest(req),
+    });
+    await publishEvent('task.created', { id: data.id, status: data.status, user_id: data.user_id }, {
+      actorId: req.user.id,
+      requestId: req.requestId,
+    });
     return sendSuccess(res, data, 201);
   } catch (err) {
     next(err);
@@ -104,6 +117,13 @@ const updateTask = async (req, res, next) => {
     }
 
     if (!canAccess(req.user, existing)) {
+      audit({
+        action: 'authz.deny',
+        result: 'FAILURE',
+        actor: { id: req.user.id, role: req.user.role },
+        resource: { type: 'task', id },
+        context: fromRequest(req),
+      });
       return sendError(res, 'Task not found', [], 404);
     }
 
@@ -120,6 +140,17 @@ const updateTask = async (req, res, next) => {
     }
 
     logger.info('Task updated', { requestId: req.requestId, taskId: id });
+    audit({
+      action: 'task.update',
+      result: 'SUCCESS',
+      actor: { id: req.user.id, role: req.user.role },
+      resource: { type: 'task', id },
+      context: fromRequest(req),
+    });
+    await publishEvent('task.updated', { id, status: data.status, user_id: data.user_id }, {
+      actorId: req.user.id,
+      requestId: req.requestId,
+    });
     return sendSuccess(res, data);
   } catch (err) {
     next(err);
@@ -147,9 +178,20 @@ const deleteTask = async (req, res, next) => {
     }
 
     if (!canAccess(req.user, existing)) {
+      audit({
+        action: 'authz.deny',
+        result: 'FAILURE',
+        actor: { id: req.user.id, role: req.user.role },
+        resource: { type: 'task', id },
+        context: fromRequest(req),
+      });
       return sendError(res, 'Task not found', [], 404);
     }
 
+    // The delete and its activity-log entry are now atomic: a BEFORE DELETE
+    // trigger (migration 004) writes the deleted_tasks row in the SAME
+    // transaction, so they can never drift apart and a log failure rolls the
+    // delete back. No best-effort app-side logging needed.
     const { error } = await TaskModel.remove(id);
 
     if (error) {
@@ -157,18 +199,18 @@ const deleteTask = async (req, res, next) => {
       return sendError(res, 'Failed to delete task', [], 500);
     }
 
-    // Record the deletion in the activity log (best-effort:
-    // a logging failure should not fail the delete itself).
-    const logResult = await TaskModel.logDeletion(existing);
-    if (logResult && logResult.error) {
-      logger.warn('Failed to record task deletion in log', {
-        requestId: req.requestId,
-        taskId: id,
-        error: logResult.error.message,
-      });
-    }
-
     logger.info('Task deleted', { requestId: req.requestId, taskId: id });
+    audit({
+      action: 'task.delete',
+      result: 'SUCCESS',
+      actor: { id: req.user.id, role: req.user.role },
+      resource: { type: 'task', id },
+      context: fromRequest(req),
+    });
+    await publishEvent('task.deleted', { id, user_id: existing.user_id }, {
+      actorId: req.user.id,
+      requestId: req.requestId,
+    });
     return sendSuccess(res, { message: 'Task deleted successfully' });
   } catch (err) {
     next(err);

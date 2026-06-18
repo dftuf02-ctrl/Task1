@@ -7,8 +7,19 @@ const config = getConfig();
 const app = createApp();
 
 const server = app.listen(config.port, () => {
-  logger.info(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
+  logger.info(`Server running on port ${config.port} in ${config.nodeEnv} mode`, {
+    serviceRole: config.serviceRole,
+  });
 });
+
+// reports-service consumes task.* events off the Redis Stream. Started here
+// (not in the worker) so the running service owns its async intake.
+if (config.serviceRole === 'reports' || config.serviceRole === 'all') {
+  const { startReportsConsumer } = require('./src/events/reportsConsumer');
+  Promise.resolve(startReportsConsumer()).catch((err) =>
+    logger.error('Failed to start reports consumer', { error: err.message }),
+  );
+}
 
 // ── Graceful Shutdown ─────────────────────────────────────────
 const shutdown = (signal) => {

@@ -38,7 +38,9 @@ const signRefreshToken = (user) => {
  */
 const verifyAccessToken = (token) => {
   const config = getConfig();
-  return jwt.verify(token, config.jwtAccessSecret);
+  // Pin the algorithm so a forged token can't downgrade to "none" or be
+  // verified under an unexpected algorithm.
+  return jwt.verify(token, config.jwtAccessSecret, { algorithms: ['HS256'] });
 };
 
 /**
@@ -48,7 +50,7 @@ const verifyAccessToken = (token) => {
  */
 const verifyRefreshToken = (token) => {
   const config = getConfig();
-  return jwt.verify(token, config.jwtRefreshSecret);
+  return jwt.verify(token, config.jwtRefreshSecret, { algorithms: ['HS256'] });
 };
 
 /**

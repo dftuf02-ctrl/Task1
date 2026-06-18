@@ -1,0 +1,93 @@
+name: capstone-ci-cd
+
+# Full CI/CD for the capstone: test → build → SCAN (gate) → push → deploy.
+# Security is a gate, not a report: the pipeline FAILS on HIGH/CRITICAL
+# vulns or leaked secrets, so vulnerable images never reach the cluster.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE: taskflow-api:cap
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  # ---- Supply-chain security gates ----
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks (fail on any committed secret)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-scan:
+    runs-on: ubuntu-latest
+    needs: [test, secret-scan]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t $IMAGE ./backend
+      - name: Trivy filesystem scan (deps)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: backend
+          severity: HIGH,CRITICAL
+          exit-code: "1"            # GATE: fail the build
+          ignore-unfixed: true
+      - name: Trivy image scan (OS + app layers)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"            # GATE: vulnerable image never ships
+          ignore-unfixed: true
+      - name: Generate SBOM (audit artifact)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          format: cyclonedx
+          output: sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
+  # ---- CD: only runs on main, after the gates pass ----
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-scan]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      # In a real cluster: push the scanned image to a registry, then
+      # `terraform apply` (capstone/terraform) which provisions the
+      # namespace/secret/config and rolls out the manifests.
+      - name: Deploy (placeholder — wire to your cluster credentials)
+        run: |
+          echo "kubectl apply -f capstone/k8s/  (or: terraform -chdir=capstone/terraform apply)"
+          echo "Image already scanned & gated; rollout uses RollingUpdate (zero downtime)."

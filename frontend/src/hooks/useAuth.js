@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import api, { tokenStore } from '../services/api';
+import api, { tokenStore, setOnSessionExpired } from '../services/api';
 
 /**
  * Authentication hook — manages the current user session.
@@ -8,6 +8,14 @@ import api, { tokenStore } from '../services/api';
 const useAuth = () => {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
+
+  // When the API layer determines the session genuinely ended (refresh token
+  // invalid/expired), drop the user so the UI reflects logged-out state
+  // instead of stranding them on a broken screen.
+  useEffect(() => {
+    setOnSessionExpired(() => setUser(null));
+    return () => setOnSessionExpired(null);
+  }, []);
 
   useEffect(() => {
     let active = true;

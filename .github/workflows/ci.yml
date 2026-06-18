@@ -7,81 +7,110 @@ on:
     branches: [ main, master ]
 
 jobs:
-  lint-and-test-backend:
-    name: Backend CI
+  # Fast feedback: lint + unit tests (model mocked — pure logic).
+  unit-backend:
+    name: Backend Unit
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
           cache: 'npm'
           cache-dependency-path: 'backend/package-lock.json'
-
-      - name: Install dependencies
+      - name: Install
         working-directory: ./backend
         run: npm ci
-
-      - name: Run ESLint
+      - name: Lint
         working-directory: ./backend
         run: npm run lint
-
-      - name: Run unit & integration tests
+      - name: Unit tests
         working-directory: ./backend
-        run: npm test
+        run: npm run test:unit
         env:
           NODE_ENV: test
-          SUPABASE_URL: https://mock.supabase.co
-          SUPABASE_ANON_KEY: mock-anon-key
 
-  lint-and-build-frontend:
+  # Real integration: actual Redis + Postgres service containers, NOT mocks,
+  # so the rate limiter, the BullMQ queue, and the event stream are exercised
+  # against real infrastructure.
+  integration-backend:
+    name: Backend Integration (real Redis + Postgres)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: taskflow_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: 'backend/package-lock.json'
+      - name: Install
+        working-directory: ./backend
+        run: npm ci
+      # Real-Redis integration tests (event stream round-trip, queue) always run.
+      - name: Integration tests (real Redis)
+        working-directory: ./backend
+        run: npm run test:e2e
+        env:
+          NODE_ENV: test
+          INTEGRATION: '1'
+          REDIS_URL: redis://localhost:6379
+          # Real DB integration runs against a provisioned TEST Supabase
+          # project when these secrets are configured; otherwise the suite
+          # uses the Postgres service container / mocks. (Never the prod DB.)
+          SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL || 'http://localhost:54321' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY || 'test-service-role' }}
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/taskflow_test
+          JWT_ACCESS_SECRET: ci-access-secret-not-for-prod
+          JWT_REFRESH_SECRET: ci-refresh-secret-not-for-prod
+
+  frontend:
     name: Frontend CI
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
-
-      - name: Install dependencies
+      - name: Install
         working-directory: ./frontend
         run: npm ci
-
-      - name: Build frontend
+      - name: Build
         working-directory: ./frontend
         run: npm run build
 
-  build-docker-images:
+  docker-build:
     name: Docker Build Validation
     runs-on: ubuntu-latest
-    needs: [lint-and-test-backend, lint-and-build-frontend]
-
+    needs: [unit-backend, integration-backend, frontend]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build API Docker Image
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: false
           tags: taskflow-api:latest
-
-      - name: Build Frontend Docker Image
+      - name: Build Frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend

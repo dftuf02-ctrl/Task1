@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow-api
+  namespace: taskflow
+  labels:
+    app: taskflow-api
+    app.kubernetes.io/part-of: taskflow
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: taskflow-api
+  # Zero-downtime rolling update: never drop below desired count, add one
+  # new pod at a time. Combined with the readiness probe, traffic only
+  # shifts to a new pod once it reports healthy.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: taskflow-api
+    spec:
+      containers:
+        - name: api
+          image: taskflow-api:k8s
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+          # True zero-downtime: on termination, keep serving for a few seconds
+          # so kube-proxy removes this pod from the Service endpoints BEFORE the
+          # process gets SIGTERM — closing the new-connection-to-dying-pod race.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "8"]
+          env:
+            # Pod name via the downward API → surfaced as X-Pod-Name.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          envFrom:
+            - configMapRef:
+                name: taskflow-config
+            - secretRef:
+                name: taskflow-secrets
+          # Readiness: /health returns 503 when the DB is unreachable, so an
+          # unhealthy pod is pulled from the Service endpoints automatically.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Liveness: a plain TCP check on the port — process-alive only, so a
+          # transient Supabase outage never triggers a pod restart.
+          livenessProbe:
+            tcpSocket:
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-api
+  namespace: taskflow
+  labels:
+    app: taskflow-api
+spec:
+  selector:
+    app: taskflow-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3001
+      nodePort: 30080
+  type: NodePort

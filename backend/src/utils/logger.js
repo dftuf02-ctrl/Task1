@@ -1,4 +1,18 @@
 const winston = require('winston');
+const { get } = require('./requestContext');
+
+/**
+ * Injects the request-scoped correlation id into every log record that
+ * doesn't already carry one, so the requestId flows through EVERY log line
+ * (controllers, models, services, the worker) without being passed by hand.
+ */
+const injectRequestId = winston.format((info) => {
+  if (!info.requestId) {
+    const { requestId } = get();
+    if (requestId) info.requestId = requestId;
+  }
+  return info;
+});
 
 /**
  * Application-wide Winston logger.
@@ -9,6 +23,7 @@ const winston = require('winston');
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
+    injectRequestId(),
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
     winston.format.errors({ stack: true }),
     process.env.NODE_ENV === 'production'

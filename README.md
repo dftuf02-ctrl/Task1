@@ -123,6 +123,13 @@ CREATE TRIGGER set_updated_at
 Then run the remaining migrations **in order** in the same SQL Editor:
 - `supabase/migrations/002_create_deleted_tasks.sql` — deletion activity log
 - `supabase/migrations/003_create_auth.sql` — `users`, `refresh_tokens`, and task ownership (`tasks.user_id`)
+- `supabase/migrations/004_security_hardening.sql` — **required**: atomic deletion logging (trigger), `deleted_tasks → users` FK, and **locks down RLS** so the anon key grants no access
+
+> **Use the service-role key, not the anon key.** The backend must be run with
+> `SUPABASE_SERVICE_ROLE_KEY` (server-side only). After migration 004 the anon
+> key can read/write nothing, so password hashes and refresh tokens are no
+> longer reachable via the public REST API. `SUPABASE_SERVICE_ROLE_KEY` is
+> **required in production** (the app refuses to start on the anon key).
 
 To populate your database with dummy data, execute the contents of `supabase/seed.sql`.
 

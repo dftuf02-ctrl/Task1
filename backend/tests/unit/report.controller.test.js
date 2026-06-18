@@ -40,15 +40,15 @@ describe('Report Controller Unit Tests', () => {
       });
     });
 
-    it('uses the Idempotency-Key header as a stable job id', async () => {
+    it('scopes the Idempotency-Key job id to the user (no cross-user collision)', async () => {
       mockReq.headers['idempotency-key'] = 'abc-123';
-      enqueueReportJob.mockResolvedValue({ id: 'report:abc-123' });
+      enqueueReportJob.mockResolvedValue({ id: 'report:u1:abc-123' });
 
       await reportController.requestReport(mockReq, mockRes, mockNext);
 
       expect(enqueueReportJob).toHaveBeenCalledWith(
         expect.any(Object),
-        { jobId: 'report:abc-123' },
+        { jobId: 'report:u1:abc-123' },
       );
     });
 
@@ -120,12 +120,12 @@ describe('Report Controller Unit Tests', () => {
       });
     });
 
-    it('exposes the failure reason when failed', async () => {
+    it('returns a generic error on failure and never leaks the raw reason', async () => {
       const job = {
         id: 'job-1',
         data: { userId: 'u1' },
         getState: jest.fn().mockResolvedValue('failed'),
-        failedReason: 'SMTP down',
+        failedReason: 'SMTP down: connect ECONNREFUSED 10.0.0.5:587',
         progress: 70,
         attemptsMade: 3,
         opts: { attempts: 3 },
@@ -135,10 +135,11 @@ describe('Report Controller Unit Tests', () => {
 
       await reportController.getReportStatus(mockReq, mockRes, mockNext);
 
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        data: expect.objectContaining({ status: 'failed', error: 'SMTP down' }),
-      });
+      const payload = mockRes.json.mock.calls[0][0];
+      expect(payload.data.status).toBe('failed');
+      expect(payload.data.error).toBe('Report generation failed. Please try again later.');
+      // The raw internal reason must NOT be exposed to the client.
+      expect(JSON.stringify(payload)).not.toContain('ECONNREFUSED');
     });
 
     it('lets an admin read any job', async () => {
