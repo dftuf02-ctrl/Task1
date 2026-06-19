@@ -19,7 +19,7 @@ update, and 3 load-balanced replicas.
 
 ## Prerequisites
 - Docker Desktop, `minikube`, `kubectl`
-- `SUPABASE_URL` + `SUPABASE_ANON_KEY` available as env vars or in the repo-root `.env`
+- `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` available as env vars or in the repo-root `.env` (the pods run `NODE_ENV=production`, which requires the service-role key — the backend will not start on the anon key)
 
 ## Deploy
 ```powershell

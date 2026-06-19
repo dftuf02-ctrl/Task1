@@ -33,10 +33,22 @@ variable "supabase_url" {
   sensitive   = true
 }
 
-variable "supabase_anon_key" {
-  description = "Supabase anon/publishable key."
+# The BACKEND must run on the SERVICE-ROLE key. With NODE_ENV=production the
+# app (src/config/env.js) refuses to start on the anon key, so providing only
+# the anon key here crash-loops the api/worker containers. Required.
+variable "supabase_service_role_key" {
+  description = "Supabase service-role key (server-side; required in production)."
   type        = string
   sensitive   = true
+}
+
+# Anon/publishable key is optional and unused by the backend (kept only so it
+# can be stored alongside the others if you want it). Defaults to empty.
+variable "supabase_anon_key" {
+  description = "Supabase anon/publishable key (optional; not used by the backend)."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 # ── App configuration ────────────────────────────────────────

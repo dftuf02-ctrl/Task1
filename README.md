@@ -34,14 +34,14 @@ build-out. Each area has its own detailed doc.
 
 ### 3. Kubernetes (minikube) — see [`k8s/README.md`](./k8s/README.md)
 - **Deployment / Service / ConfigMap / Secret**, readiness (`/health`) + liveness (TCP) probes.
-- **Zero-downtime rolling update** (verified 600/600 requests during rollout, `preStop` drain).
-- **Scaled to 3 replicas** with proven load-balancing across pods.
+- **Zero-downtime rolling update** — `maxUnavailable: 0`, readiness-gated cutover, and a `preStop` drain. `prove.ps1` hammers the Service (~600 requests) through a rollout and reports the OK/FAIL split; run it to generate the evidence (no rollout log is committed to this repo).
+- **Scaled to 3 replicas** — each response carries an `X-Pod-Name` header, and `prove.ps1` tallies requests per pod to show load-balancing across them.
 
 ### 4. Capstone — multi-service system — see [`capstone/README.md`](./capstone/README.md)
 - **2 services** (`tasks-service`, `reports-service`) behind an **NGINX Ingress** gateway.
 - **Async messaging** between them via **Redis Streams** (publish/consume).
 - **Full CI/CD** (`.github/workflows/`): test → secret scan (Gitleaks) → build → **Trivy image/fs scan (fails on HIGH/CRITICAL)** → SBOM → deploy.
-- **Deployed via Terraform to Kubernetes**, with monitoring and a defence-grade **security pass**: PSS `restricted`, default-deny **NetworkPolicies**, least-privilege **ServiceAccounts**, non-root/read-only/drop-caps containers, and an **append-only audit log** of every authn/authz/data-mutation/event.
+- **Deployed via Terraform to Kubernetes**, with monitoring and a defence-grade **security pass**: PSS `restricted`, default-deny **NetworkPolicies**, least-privilege **ServiceAccounts**, non-root/read-only/drop-caps containers, and a **tamper-evident audit log** (request-ID-correlated JSON) of every authn/authz/data-mutation/event. Records are linked in an **HMAC-SHA256 hash chain** (`seq` + `prevHash` + `hash`, key never logged), so any edit, deletion, insertion, or reordering is detectable — verify with `npm run verify:audit` (`backend/scripts/verify-audit.js`). To also catch wholesale truncation of the tail, anchor the latest `hash` in an external append-only store.
 
 ### 5. Security hardening (defence-grade)
 All 18 review findings plus an attack-surface audit were resolved (see [`SECURITY-FIXES.md`](./SECURITY-FIXES.md)). Highlights:

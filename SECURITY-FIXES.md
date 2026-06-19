@@ -38,7 +38,7 @@ All 18 review findings, plus an additional attack-surface audit, resolved and
 - **Mass assignment** blocked: `validate` replaces `req.body` with Zod-parsed data (unknown keys stripped); `user_id`/`role` can't be injected — ownership is always set from the JWT.
 - **Injection**: all DB access is parameterized via the Supabase client; Redis uses arg-separated commands. No string concatenation.
 - **Secrets in git**: none tracked; comprehensive `.gitignore` for `.env`, Terraform `*.tfstate`/`*.tfvars`, and keys/certs across all directories.
-- **Audit logging**: append-only, structured records for every authn, authz-deny, data mutation, and consumed async event.
+- **Audit logging**: tamper-evident structured records for every authn, authz-deny, data mutation, and consumed async event. Records are linked in an HMAC-SHA256 hash chain (`seq`/`prevHash`/`hash`, key never logged), so any edit/deletion/reordering is detectable via `npm run verify:audit`. (Anchor the latest hash externally to also detect tail-truncation; a WORM store still adds availability/retention guarantees.)
 
 ## Required for production
 - Set `SUPABASE_SERVICE_ROLE_KEY` (server-side only) and run migration `004`.

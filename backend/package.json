@@ -14,6 +14,7 @@
     "test": "jest --coverage --forceExit --detectOpenHandles",
     "test:unit": "jest tests/unit --coverage --forceExit",
     "test:e2e": "jest tests/integration --forceExit --detectOpenHandles",
+    "verify:audit": "node scripts/verify-audit.js",
     "test:watch": "jest --watch",
     "loadtest:auth": "k6 run ../loadtest/auth.js",
     "loadtest:tasks": "k6 run ../loadtest/tasks.js"

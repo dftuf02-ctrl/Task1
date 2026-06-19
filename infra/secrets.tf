@@ -28,9 +28,10 @@ resource "aws_secretsmanager_secret" "app" {
 resource "aws_secretsmanager_secret_version" "app" {
   secret_id = aws_secretsmanager_secret.app.id
   secret_string = jsonencode({
-    SUPABASE_URL       = var.supabase_url
-    SUPABASE_ANON_KEY  = var.supabase_anon_key
-    JWT_ACCESS_SECRET  = random_password.jwt_access.result
-    JWT_REFRESH_SECRET = random_password.jwt_refresh.result
+    SUPABASE_URL              = var.supabase_url
+    SUPABASE_SERVICE_ROLE_KEY = var.supabase_service_role_key
+    SUPABASE_ANON_KEY         = var.supabase_anon_key
+    JWT_ACCESS_SECRET         = random_password.jwt_access.result
+    JWT_REFRESH_SECRET        = random_password.jwt_refresh.result
   })
 }

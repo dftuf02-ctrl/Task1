@@ -16,9 +16,15 @@ docker build -t taskflow-api:cap "$root\backend"
 & minikube image load taskflow-api:cap
 
 Write-Host "==> Supabase creds -> TF_VAR (from repo-root .env; nothing hardcoded)" -ForegroundColor Cyan
+# Pods run NODE_ENV=production, which requires the service-role key - the
+# backend refuses to start on the anon key (src/config/env.js). Wire the
+# service-role key through, or the services CrashLoopBackOff at startup.
 Get-Content "$root\.env" | ForEach-Object {
-  if ($_ -match '^\s*SUPABASE_URL\s*=\s*(.+?)\s*$')      { $env:TF_VAR_supabase_url = $Matches[1] }
-  if ($_ -match '^\s*SUPABASE_ANON_KEY\s*=\s*(.+?)\s*$') { $env:TF_VAR_supabase_anon_key = $Matches[1] }
+  if ($_ -match '^\s*SUPABASE_URL\s*=\s*(.+?)\s*$')               { $env:TF_VAR_supabase_url = $Matches[1] }
+  if ($_ -match '^\s*SUPABASE_SERVICE_ROLE_KEY\s*=\s*(.+?)\s*$')  { $env:TF_VAR_supabase_service_role_key = $Matches[1] }
+}
+if (-not $env:TF_VAR_supabase_url -or -not $env:TF_VAR_supabase_service_role_key) {
+  throw "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in repo-root .env - NODE_ENV=production requires the service-role key"
 }
 
 Write-Host "==> terraform apply (namespace + config + secret + workloads)" -ForegroundColor Cyan

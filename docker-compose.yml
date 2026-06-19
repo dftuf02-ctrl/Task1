@@ -23,7 +23,9 @@ services:
       - NODE_ENV=production
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      # Optional; backend uses the service-role key. Default empty so an unset
+      # value doesn't emit a "variable is not set" warning.
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
       - CORS_ORIGIN=http://localhost
       - REDIS_URL=redis://redis:6379
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
@@ -58,7 +60,9 @@ services:
       - NODE_ENV=production
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      # Optional; backend uses the service-role key. Default empty so an unset
+      # value doesn't emit a "variable is not set" warning.
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
       - REDIS_URL=redis://redis:6379
       # Required because getConfig() validates these in production, even
       # though the worker itself never issues/verifies JWTs.

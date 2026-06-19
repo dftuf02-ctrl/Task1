@@ -53,7 +53,8 @@ resource "docker_container" "api" {
     "PORT=3001",
     "NODE_ENV=${var.node_env}",
     "SUPABASE_URL=${var.supabase_url}",
-    "SUPABASE_ANON_KEY=${var.supabase_anon_key}",
+    # Backend uses the service-role key; production refuses to boot on anon.
+    "SUPABASE_SERVICE_ROLE_KEY=${var.supabase_service_role_key}",
     "CORS_ORIGIN=${var.cors_origin}",
     "REDIS_URL=redis://redis:6379",
     "JWT_ACCESS_SECRET=${random_password.jwt_access.result}",
@@ -95,7 +96,8 @@ resource "docker_container" "worker" {
   env = [
     "NODE_ENV=${var.node_env}",
     "SUPABASE_URL=${var.supabase_url}",
-    "SUPABASE_ANON_KEY=${var.supabase_anon_key}",
+    # Backend uses the service-role key; production refuses to boot on anon.
+    "SUPABASE_SERVICE_ROLE_KEY=${var.supabase_service_role_key}",
     "REDIS_URL=redis://redis:6379",
     "JWT_ACCESS_SECRET=${random_password.jwt_access.result}",
     "JWT_REFRESH_SECRET=${random_password.jwt_refresh.result}",

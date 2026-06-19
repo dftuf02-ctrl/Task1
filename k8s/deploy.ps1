@@ -22,16 +22,20 @@ kubectl apply -f "$here\namespace.yaml"
 kubectl apply -f "$here\configmap.yaml"
 
 Write-Host "==> Creating Secret (no plaintext in repo)" -ForegroundColor Cyan
+# The pods run with NODE_ENV=production (see configmap.yaml), and in production
+# the backend REQUIRES the service-role key - it refuses to start on the anon
+# key (src/config/env.js). So the Secret must carry SUPABASE_SERVICE_ROLE_KEY,
+# not the anon key, or every pod CrashLoopBackOffs at startup.
 $supaUrl = $env:SUPABASE_URL
-$supaKey = $env:SUPABASE_ANON_KEY
+$supaKey = $env:SUPABASE_SERVICE_ROLE_KEY
 $envFile = Join-Path $root ".env"
 if ((-not $supaUrl -or -not $supaKey) -and (Test-Path $envFile)) {
   Get-Content $envFile | ForEach-Object {
     if (-not $supaUrl -and $_ -match '^\s*SUPABASE_URL\s*=\s*(.+?)\s*$') { $supaUrl = $Matches[1] }
-    if (-not $supaKey -and $_ -match '^\s*SUPABASE_ANON_KEY\s*=\s*(.+?)\s*$') { $supaKey = $Matches[1] }
+    if (-not $supaKey -and $_ -match '^\s*SUPABASE_SERVICE_ROLE_KEY\s*=\s*(.+?)\s*$') { $supaKey = $Matches[1] }
   }
 }
-if (-not $supaUrl -or -not $supaKey) { throw "Set SUPABASE_URL and SUPABASE_ANON_KEY (env or repo-root .env)" }
+if (-not $supaUrl -or -not $supaKey) { throw "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (env or repo-root .env) - NODE_ENV=production requires the service-role key" }
 
 function New-Secret64 {
   $bytes = New-Object byte[] 48
@@ -40,12 +44,14 @@ function New-Secret64 {
 }
 $jwtAccess  = New-Secret64
 $jwtRefresh = New-Secret64
+$auditKey   = New-Secret64   # dedicated HMAC key for the tamper-evident audit chain
 
 kubectl create secret generic taskflow-secrets -n taskflow `
   --from-literal=SUPABASE_URL=$supaUrl `
-  --from-literal=SUPABASE_ANON_KEY=$supaKey `
+  --from-literal=SUPABASE_SERVICE_ROLE_KEY=$supaKey `
   --from-literal=JWT_ACCESS_SECRET=$jwtAccess `
   --from-literal=JWT_REFRESH_SECRET=$jwtRefresh `
+  --from-literal=AUDIT_HMAC_KEY=$auditKey `
   --dry-run=client -o yaml | kubectl apply -f -
 
 Write-Host "==> Applying redis + api + worker" -ForegroundColor Cyan

@@ -32,7 +32,7 @@ independently-scaled services with **distinct identities and network policy**.
 | **Secrets management** | k8s Secret from TF (Supabase from vars, JWT generated); never in code/image | `terraform/main.tf`, `.dockerignore` |
 | **Container scanning** | Trivy fs + image scan, **fail on HIGH/CRITICAL**; Gitleaks secret scan; SBOM artifact | CI workflow |
 | **Least privilege** | per-service ServiceAccounts (no RBAC, token not mounted); non-root, read-only rootfs, drop ALL caps, seccomp; PSS `restricted`; default-deny NetworkPolicies | `k8s/00,10,40,50,70` |
-| **Audit logging (hard req)** | append-only structured audit events on every authn / authz-deny / data mutation / event-consume | `backend/src/utils/audit.js` |
+| **Audit logging (hard req)** | tamper-evident audit events (HMAC-SHA256 hash chain) on every authn / authz-deny / data mutation / event-consume; verify with `npm run verify:audit` | `backend/src/utils/audit.js`, `backend/scripts/verify-audit.js` |
 
 ## Audit logging (defence hard requirement)
 A dedicated audit logger (separate from app logs) emits one-line JSON records:
@@ -43,9 +43,21 @@ method, path, requestId, timestamp }`. Coverage:
 - `task.create` / `task.update` / `task.delete`
 - `event.consume` — every async event the reports-service processes
 
-Records are append-only in-process (never mutated/deleted) and emitted on a
-dedicated stream so a shipper can route them to a write-once store. The
-`requestId` correlates an audit record to the full request trace.
+**Tamper-evident:** records are linked in an HMAC-SHA256 hash chain — each
+carries `seq`, `prevHash`, and `hash = HMAC(key, prevHash + canonical(record))`,
+and the key is never written to the log. Editing, deleting, inserting, or
+reordering any record breaks the chain and is caught by the verifier:
+
+```
+kubectl logs -n taskflow-cap -l app=tasks-service | node backend/scripts/verify-audit.js
+# OK — N audit record(s) across M chain(s) verified intact.   (exit 0)
+# TAMPER DETECTED — ...                                        (exit 1)
+```
+
+Each process emits its own chain (`chainId`); the verifier checks each
+independently. Hash-chaining detects mutation/reordering within a chain — to
+also detect tail-truncation, anchor the latest `hash` in an external append-only
+store. The `requestId` correlates an audit record to the full request trace.
 
 ## Security pass summary
 - **Supply chain:** Trivy (deps + image) gates the build; Gitleaks blocks

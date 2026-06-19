@@ -22,8 +22,8 @@ variable "supabase_url" {
   sensitive   = true
 }
 
-variable "supabase_anon_key" {
-  description = "Supabase anon key."
+variable "supabase_service_role_key" {
+  description = "Supabase service-role key (server-side only). The backend requires it under NODE_ENV=production and refuses to start on the anon key."
   type        = string
   sensitive   = true
 }

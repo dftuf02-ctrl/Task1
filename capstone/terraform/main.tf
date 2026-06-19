@@ -55,6 +55,12 @@ resource "random_password" "jwt_refresh" {
   special = false
 }
 
+# Dedicated HMAC key for the tamper-evident audit hash-chain.
+resource "random_password" "audit_hmac" {
+  length  = 64
+  special = false
+}
+
 resource "kubernetes_secret" "app" {
   metadata {
     name      = "taskflow-secrets"
@@ -62,10 +68,11 @@ resource "kubernetes_secret" "app" {
   }
   type = "Opaque"
   data = {
-    SUPABASE_URL       = var.supabase_url
-    SUPABASE_ANON_KEY  = var.supabase_anon_key
-    JWT_ACCESS_SECRET  = random_password.jwt_access.result
-    JWT_REFRESH_SECRET = random_password.jwt_refresh.result
+    SUPABASE_URL              = var.supabase_url
+    SUPABASE_SERVICE_ROLE_KEY = var.supabase_service_role_key
+    JWT_ACCESS_SECRET         = random_password.jwt_access.result
+    JWT_REFRESH_SECRET        = random_password.jwt_refresh.result
+    AUDIT_HMAC_KEY            = random_password.audit_hmac.result
   }
 }
 

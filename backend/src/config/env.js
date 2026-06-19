@@ -89,6 +89,11 @@ const getConfig = () => {
     // JWT / Auth
     jwtAccessSecret,
     jwtRefreshSecret,
+
+    // Audit hash-chain HMAC key. Optional: falls back to the JWT access secret
+    // so the tamper-evident chain always has a secret key. Set a dedicated
+    // AUDIT_HMAC_KEY in production so rotating JWT secrets can't break the chain.
+    auditHmacKey: process.env.AUDIT_HMAC_KEY || undefined,
     jwtAccessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
     jwtRefreshExpiry: process.env.JWT_REFRESH_EXPIRY || '7d',
     refreshExpiryDays: parseInt(process.env.REFRESH_EXPIRY_DAYS, 10) || 7,

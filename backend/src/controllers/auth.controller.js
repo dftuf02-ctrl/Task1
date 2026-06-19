@@ -41,6 +41,7 @@ const signup = async (req, res, next) => {
 
     // Prevent privilege escalation: clients cannot self-assign ADMIN.
     if (role && role === 'ADMIN') {
+      audit({ action: 'auth.signup', result: 'FAILURE', context: fromRequest(req), metadata: { email, reason: 'admin-self-assign' } });
       return sendError(res, 'Cannot self-assign the ADMIN role', [], 403);
     }
 
@@ -61,6 +62,7 @@ const signup = async (req, res, next) => {
     }
 
     const tokens = await issueTokens(user);
+    audit({ action: 'auth.signup', result: 'SUCCESS', actor: { id: user.id, role: user.role, email: user.email }, context: fromRequest(req) });
     logger.info('User signed up', { requestId: req.requestId, userId: user.id });
     return sendSuccess(res, { user: publicUser(user), ...tokens }, 201);
   } catch (err) {
