@@ -1,6 +1,12 @@
 # ── Stage 1: Build & Dependencies ──────────────────────────────────────
 FROM node:22-alpine AS builder
 
+# Patch OS packages to the latest fixed versions in the Alpine repo. The base
+# image lags behind the repo between releases, so this clears fixable
+# HIGH/CRITICAL OS-layer CVEs that the Trivy image-scan gate would otherwise
+# fail the build on.
+RUN apk --no-cache upgrade
+
 WORKDIR /usr/src/app
 
 # Copy package files
@@ -14,6 +20,13 @@ COPY . .
 
 # ── Stage 2: Production Release ────────────────────────────────────────
 FROM node:22-alpine AS runner
+
+# Patch OS packages in the FINAL image — this is the layer Trivy scans and
+# gates on. Also refresh the bundled npm in case the base ships a version with
+# a fixable advisory.
+RUN apk --no-cache upgrade \
+ && npm install -g npm@latest \
+ && npm cache clean --force
 
 WORKDIR /usr/src/app
 
